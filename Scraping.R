@@ -2,6 +2,8 @@ rm(list=ls())
 
 ## llamar la librería pacman: contiene la función p_load()
 install.packages("pacman")
+install.packages("psych")
+library("psych")
 require(pacman)
 
 ## p_load llama/instala-llama las librerías que se enlistan:
@@ -52,7 +54,7 @@ variables_categoricas <- c(
   "p7500s2", "p7500s3", "p7505", "p7510s1", "p7510s2",
   "p7510s3", "p7510s5", "p7510s6", "p7510s7", "pea", "pet", 
   "regSalud", "relab", "secuencia_p", "sex", "sizeFirm", "wap"
-  )
+)
 
 # Volvemos las variables categoricas a tipo factor
 datos_geih <- datos_geih %>%
@@ -60,6 +62,9 @@ datos_geih <- datos_geih %>%
             .funs = factor)
 
 str(datos_geih)
+
+########Limpieza de Base############
+###################################
 
 # Eliminamos la primera columna que no contiene ninguna información,
 ## solo nos indica el número de la observación.
@@ -88,24 +93,30 @@ p_load("ggplot2")
 filtro <- cant_na$cant_na != 0
 cant_na <- cant_na[filtro,]
 
-#Por visualización graficamos las primaras 50 variables
+#Por visualización graficamos las primeras 50 variables
 cant_na_1_50 <- cant_na[1:50,]
 
 ggplot(data = cant_na_1_50, aes(x = porcentaje_na, y = variable)) +
   geom_bar(stat = "identity", fill = "darkblue")
 
+#Eliminamos las observaciones de las personas menores de 18 años 
+datos_geih<-datos_geih %>%
+  filter(wap==1 & age > 18)
+
+##convertir 99 en años de educacuión a na
+
+datos_geih$anios_educ<-as.numeric(levels(datos_geih$p6210s1))[datos_geih$p6210s1]
+datos_geih<-datos_geih %>% mutate(anios_educ=na_if(anios_educ,99))
+
+#Creamos variable de experiencia con base en la literatura (age minus anios educ minus 6)
+datos_geih<-datos_geih %>% mutate(exper=age-anios_educ-6)
+summary(datos_geih$exper)
 
 
+view(datos_geih[datos_geih$exper==100,])#hay alguien con 106 años en la base
 
+####Análisis descriptivo de variables#####
+##########################################
 
-
-
-
-
-
-
-
-
-
-
+psych::describe(datos_geih[,c('age','totalHoursWorked','exper','anios_educ')])
 
