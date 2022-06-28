@@ -3,8 +3,16 @@ rm(list=ls())
 ## llamar la librería pacman: contiene la función p_load()
 install.packages("pacman")
 install.packages("psych")
+install.packages("stargazer")
+
 library("psych")
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(mosaic)
 require(pacman)
+require("stargazer")
+require("tidyverse")
 
 ## p_load llama/instala-llama las librerías que se enlistan:
 p_load(tidyverse, # contiene las librerías ggplot, dplyr...
@@ -283,8 +291,31 @@ table(datos_geih_final["exper"])
 ####Análisis descriptivo de variables#####
 ##########################################
 
-estadisticas <- as.data.frame(psych::describe(datos_geih_final[,c('age','totalHoursWorked','exper','anios_educ','ingtot')]))
+estadisticas <- psych::describe(datos_geih_final[,c('age','totalHoursWorked','exper','anios_educ','ingtot')])
 estadisticas2 <- as.data.frame(summary(datos_geih_final[,c('sex','maxEducLevel','estrato1','formal','informal')]))
+
+
+
+ggplot(datos_geih_final) +
+  geom_point(aes(x=ingtot,y=totalHoursWorked))
+
+ggplot(datos_geih_final) +
+  geom_point(aes(x=ingtot,y=exper))
+
+ggplot(datos_geih_final) +
+  geom_point(aes(x=ingtot,y=estrato1))
+
+pairs(datos_geih_final [,c(44,49,65)], pch="*")
+pairs(datos_geih_final [,c(44,58,65)], pch="*")
+
+
+
+
+
+#### para pasar a tabla en formato texto
+stargazer(estadisticas,type="text")
+stargazer(estadisticas2,type="text")
+
 
 
 
@@ -301,9 +332,6 @@ skewness(1/(datos_geih_final$ingtot))
 p_load(EnvStats)
 lambda <- boxcox(datos_geih_final$ingtot, objective.name = "log-likelihood",
        optimize = T)$lambda
-
-
-
 
 
 
@@ -325,8 +353,288 @@ datos_geih_escalada[,"mes"]*sigma["mes"]+media["mes"] ## Verificando y devolvien
 datos_geih[,"mes"]
 
 
+################################ PUNTO 3 ##########################################
+###################################################################################
+
+#################Perfil de Edad e Ingresos#############
+#Crear variable de edad al cuadrado
+datos_geih_final$agesqr<- datos_geih_final$age**2
+
+#Corremos la regresión con la ecuación del perfil de edad-ingresos:
+reg1<-lm(ingtot~age+agesqr, data=datos_geih_final)
+summary(reg1)
+
+#Tabla de regresión
+stargazer(reg1,type="text")
+
+#Gráfico de predicción de Ingresos vs. Edad
+ggplot() +
+  geom_point(data=datos_geih_final,aes(x = age, y=ingtot),alpha=0.3,size=0.3)+
+  geom_smooth(method = "lm",formula=ingtot~poly(age,2))+geom_line(aes(x=age,y=ingpred))
+
+ggplot() +
+  geom_point(data=datos_geih_final,aes(x = age, y=ingtot),alpha=0.3,size=0.3)+
+  geom_smooth(method = "lm",formula=ingtot~poly(age,2))+geom_line(aes(x=age,y=ingpred))+
+  scale_y_continuous(labels=dollar_format())
 
 
-install.packages("gtsummary")
+#Gráfico de predicción con ajustes de escala
+ggplot() +
+  geom_point(data=datos_geih_final,aes(x = age, y=ingtot),alpha=0.3,size=0.3)
+geom_line(aes(x=age,y=ingpred))+
+  scale_y_continuous(labels=dollar_format(),limits=c(0,15000000))
+
+###############Bootstrap##############
+require("tidyverse")
+set.seed(112)
+R<-1000 #Number of Repetitions 
+eta_mod1<-rep(0,R)
+for (i in 1:R) {
+  db_sample<- sample_frac(c, size=1, replace = TRUE)
+  f<-lm(ingtot~age+agesqr, db_sample)
+  coefs<-f$coefficients
+  eta_mod1[i]<-coefs[2]
+}
+plot(hist(eta_mod1))
+
+
+quantile(eta_mod1,c(0.025,0.975))
+
+require("boot")
+
+
+eta.fn<-function(datos_geih_final,index){
+  coef(lm(ingtot~age+agesqr, data=datos_geih_final, subset=index))
+  
+}
+
+############################################ PUNTO 4 ##############################
+###################################################################################
+
+### los valores de cero de ingtot los cambio a 1 para poder calcular el log
+filtro4 <- datos_geih_final$ingtot == 0
+datos_geih_final$ingtot[filtro4] <- 1
+table(datos_geih_final$ingtot)
+
+####### Estimación
+reg_4<-lm(log(ingtot)~sex+age+agesqr,data=datos_geih_final)
+summary(reg_4)
+stargazer(reg_4,type="text")
+
+ggplot(datos_geih_final , mapping = aes(x = age , y = predict(reg_4))) +
+  geom_point(col = "red" , size = 1) ###peak_age se da sobre los 42 años
+
+
+######## base de datos solo con mujeres######
+datos_geih_mujeres <- datos_geih_final %>%
+  filter(sex==1)
+reg_5<-lm(log(ingtot)~age+agesqr,data=datos_geih_mujeres)
+summary(reg_5)
+stargazer(reg_5,type="text")
+
+ggplot(datos_geih_mujeres , mapping = aes(x = age , y = predict(reg_5))) +
+  geom_point(col = "red" , size = 1) ####peak_age se da sobre los 46 años
+
+
+######## Utilizando bootstrap
+##Esta es la función y el bootstrap:
+SE_5 <- function(datos_geih_mujeres, index){
+  coef(lm(log(ingtot)~age+agesqr, data=datos_geih_mujeres, subset =  index))
+}
+boot(data=datos_geih_mujeres, SE_5, R=1000)
+
+coefreg5<-reg_5$coefficients
+b0<-coefreg5[1]
+b1<-coefreg5[2]
+b2<-coefreg5[3]
+
+peak_age<- -(b1/(2*b2)) #####peak_age 46.063
+
+
+######## base de datos solo con hombres######
+datos_geih_hombres <- datos_geih_final %>%
+  filter(sex==0)
+reg_6<-lm(log(ingtot)~age+agesqr,data=datos_geih_hombres)
+summary(reg_6)
+stargazer(reg_6,type="text")
+
+ggplot(datos_geih_hombres , mapping = aes(x = age , y = predict(reg_6))) +
+  geom_point(col = "red" , size = 1) ####peak_age se da sobre los 37 años
+
+
+
+######## Utilizando bootstrap
+##Esta es la función y el bootstrap:
+SE_6 <- function(datos_geih_hombres, index){
+  coef(lm(log(ingtot)~age+agesqr, data=datos_geih_hombres, subset =  index))
+}
+boot(data=datos_geih_hombres, SE_6, R=1000)
+
+
+
+coefreg6<-reg_6$coefficients
+b0<-coefreg6[1]
+b1<-coefreg6[2]
+b2<-coefreg6[3]
+
+peak_age<- -(b1/(2*b2)) #####peak_age 37.499
+
+
+stargazer(reg_4,reg_5,reg_6,type="text")
+
+### De acuerdo con lo anterior se puede observar que el peak_age es diferente
+## para los hombres y para las mujeres, siendo mas alto para las mujeres
+
+
+
+##########Introduciendo variables de control en el modelo#############
+reg_4<-lm(log(ingtot)~sex+age+agesqr,data=datos_geih_final)
+summary(reg_4)
+
+reg_7<-lm(log(ingtot)~sex+age+agesqr+totalHoursWorked+anios_educ,data=datos_geih_final)
+summary(reg_7)
+
+
+stargazer(reg_4,reg_7,type="text")
+
+
+
+### FWL #######
+head(datos_geih_final)
+tail(datos_geih_final)
+
+datos_geih_final <- datos_geih_final %>% mutate(ej=c(rep(0,16395),1))
+tail(datos_geih_final)
+
+reg_8<-lm(log(ingtot)~sex+age+agesqr+totalHoursWorked+anios_educ+ej,
+          data=datos_geih_final)
+summary(reg_7)
+
+stargazer(reg_4,reg_7,reg_8,type="text")
+
+
+datos_geih_final<-datos_geih_final %>%
+  mutate(res_y_e=lm(log(ingtot)~ej,datos_geih_final)$residuals, 
+         res_x_e=lm(sex~ej,datos_geih_final)$residuals)
+
+reg_9<-lm(res_y_e~res_x_e+age+agesqr+totalHoursWorked+anios_educ,datos_geih_final)
+stargazer(reg_4,reg_7,reg_8,reg_9,type="text")
+
+
+#datos_geih_final <- datos_geih_final %>%
+  #select(-"ej")
+
+
+#################################### PUNTO 5 ######################################
+###################################################################################
+
+set.seed(10101)
+datos_geih_final5 <- datos_geih_final %>%
+  mutate(holdout = as.logical(1:nrow(datos_geih_final) %in%
+                                sample(nrow(datos_geih_final), nrow(datos_geih_final)*.3)))
+
+### Dividimos la muestra entre tratamiento y prueba 
+test<-datos_geih_final5[datos_geih_final5$holdout==T,]
+train<-datos_geih_final5[datos_geih_final5$holdout==F,]
+
+# Realizamos una regresión que sera nuestro modelo base solo con una constante
+model1<-lm(ingtot~1,data=train)
+summary(model1)
+test$model1<-predict(model1,newdata=test)
+with(test,mean((ingtot-model1)^2))# calculamos el MSE (error cuadrático medio) MSE=7.624e+12
+
+# Estimammos nuvamente los modelos anteriores
+model2<-lm(ingtot~age+agesqr,data=train)
+summary(model2)
+test$model2<-predict(model2,newdata=test)
+with(test,mean((ingtot-model2)^2))# calculamos el MSE (error cuadrático medio) MSE=7.514e+12
+
+model3<-lm(ingtot~age+agesqr+sex,data=train)
+summary(model3)
+test$model3<-predict(model3,newdata=test)
+with(test,mean((ingtot-model3)^2))# calculamos el MSE (error cuadrático medio) MSE=7.485e+12
+
+model4<-lm(ingtot~age+agesqr+sex+totalHoursWorked+exper+anios_educ,data=train)
+summary(model4)
+test$model4<-predict(model4,newdata=test)
+with(test,mean((ingtot-model4)^2))# calculamos el MSE (error cuadrático medio) MSE=7.481e+12
+
+model5<-lm(ingtot~age+agesqr+sex+totalHoursWorked+exper+poly(exper,2)+anios_educ,data=train)
+summary(model5)
+test$model5<-predict(model5,newdata=test)
+with(test,mean((ingtot-model5)^2))# calculamos el MSE (error cuadrático medio) MSE=7.431e+12
+
+######## leverage ########
+##########################
+
+## realizamos un loop para mirar leverage en todas las observaciones
+aux <- c()
+for (i in 1:nrow(test)) {
+  u<-lm(ingtot~age+agesqr+sex+totalHoursWorked+exper+poly(exper,2)+anios_educ,data=test)$residual[i]
+  u
+  
+  h<-lm.influence(lm(ingtot~age+agesqr+sex+totalHoursWorked+exper+poly(exper,2)+anios_educ,data=test))$hat[i]
+  h
+  
+  alpha<-u/(1-h)
+  alpha
+  
+  aux[i] <- alpha
+}
+
+mean(aux) ###-107.8124
+max(aux) ###67501189
+min(aux) ##-3150525
+###### de acuerdo con lo anterior se puede decir que si existen valores atipicos en esta muestra,
+###### es decir, existen observaciones con un alto apalancamiento que pueden estar impulsando los datos
+
+###### Lo anterior puede ser porducto de un modelo defectuoso, sin embargo al analizar la complejidad del 
+###### del modelo analizado, se puede decir que estas observaciones pueden ser valores atipicos que podria 
+###### la DIAN, debido a que se esta reportando información anormal.
+
+
+######## k-fold #########
+#########################
+install.packages("caret")
+library("caret")
+
+
+model2<-train(ingtot~age+agesqr,
+              data=datos_geih_final,
+              trControl=trainControl(method = "cv",number = 10),
+              method="lm")# calculamos el RMSE (error cuadrático medio) MSE=26522990
+
+model3<-train(ingtot~age+agesqr+sex,
+              data=datos_geih_final,
+              trControl=trainControl(method = "cv",number = 10),
+              method="lm")# calculamos el RMSE (error cuadrático medio) MSE=26337652
+
+model4<-train(ingtot~age+agesqr+sex+totalHoursWorked+exper+anios_educ,
+              data=datos_geih_final,
+              trControl=trainControl(method = "cv",number = 10),
+              method="lm")# calculamos el RMSE (error cuadrático medio) MSE=2640825
+
+model5<-train(ingtot~age+agesqr+sex+totalHoursWorked+exper+poly(exper,2)+anios_educ,
+              data=datos_geih_final,
+              trControl=trainControl(method = "cv",number = 10),
+              method="lm")# calculamos el RMSE (error cuadrático medio) MSE=2634156
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
