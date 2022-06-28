@@ -5,6 +5,19 @@ install.packages("pacman")
 install.packages("psych")
 library("psych")
 require(pacman)
+install.packages("stargazer")
+require("stargazer")
+install.packages('jmv')
+library(jmv)
+install.packages("scales")
+library(mosaic)
+require("mosaic")
+install.packages("metrics")
+require("metrics")
+install.packages("boot")
+install.packages("pacman")
+install.packages("psych")
+
 
 ## p_load llama/instala-llama las librerías que se enlistan:
 p_load(tidyverse, # contiene las librerías ggplot, dplyr...
